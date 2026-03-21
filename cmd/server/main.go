@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/joho/godotenv"
+	"github.com/giorgio/conference-go/pkg/conversation"
 	"github.com/giorgio/conference-go/pkg/data"
 	"github.com/giorgio/conference-go/pkg/email"
 	"github.com/giorgio/conference-go/pkg/embedding"
@@ -24,10 +25,11 @@ import (
 )
 
 type App struct {
-	preproc  *preprocessing.Preprocessor
-	embedder *embedding.Embedder
-	index    *indexing.Index
-	writer   *email.Writer
+	preproc          *preprocessing.Preprocessor
+	embedder         *embedding.Embedder
+	index            *indexing.Index
+	writer           *email.Writer
+	conversationalist *conversation.Conversationalist
 }
 
 type MatchRequest struct {
@@ -52,6 +54,22 @@ type EmailRequest struct {
 type EmailResponse struct {
 	Email string `json:"email,omitempty"`
 	Error string `json:"error,omitempty"`
+}
+
+type ChatRequest struct {
+	Person  *types.Person          `json:"person"`
+	History []conversation.Message `json:"history"`
+	Message string                 `json:"message"`
+}
+
+type ChatResponse struct {
+	Reply string `json:"reply,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+type TTSRequest struct {
+	Text  string `json:"text"`
+	Voice string `json:"voice,omitempty"`
 }
 
 func main() {
@@ -163,6 +181,11 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		return nil, fmt.Errorf("failed to create email writer: %w", err)
 	}
 
+	conv, err := conversation.NewConversationalist(ctx, apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create conversationalist: %w", err)
+	}
+
 	index := indexing.NewIndex()
 
 	// Load existing cache
@@ -256,10 +279,11 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 	}
 
 	app := &App{
-		preproc:  preproc,
-		embedder: embedder,
-		index:    index,
-		writer:   writer,
+		preproc:          preproc,
+		embedder:         embedder,
+		index:            index,
+		writer:           writer,
+		conversationalist: conv,
 	}
 
 	if app.index.Size() == 0 {
@@ -381,6 +405,8 @@ func runWebServer(app *App, port string) {
 	http.HandleFunc("/api/profile", app.handleProfile)
 	http.HandleFunc("/api/match", app.handleMatch)
 	http.HandleFunc("/api/email", app.handleEmail)
+	http.HandleFunc("/api/chat", app.handleChat)
+	http.HandleFunc("/api/tts", app.handleTTS)
 
 	// Main page
 	http.HandleFunc("/", app.handleIndex)
@@ -534,4 +560,66 @@ func (app *App) sendJSONError(w http.ResponseWriter, message string, statusCode 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(MatchResponse{Error: message})
+}
+
+func (app *App) handleChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if app.conversationalist == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ChatResponse{Error: "Server not initialized"})
+		return
+	}
+
+	var req ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Person == nil || req.Message == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{Error: "person and message are required"})
+		return
+	}
+
+	reply, err := app.conversationalist.Chat(req.Person, req.History, req.Message)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ChatResponse{Error: fmt.Sprintf("Failed to generate reply: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ChatResponse{Reply: reply})
+}
+
+func (app *App) handleTTS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if app.conversationalist == nil {
+		http.Error(w, "Server not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req TTSRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Text == "" {
+		http.Error(w, "text is required", http.StatusBadRequest)
+		return
+	}
+
+	audio, err := app.conversationalist.Speak(req.Text, req.Voice)
+	if err != nil {
+		log.Printf("TTS error: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to generate speech: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "audio/wav")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(audio)))
+	w.Write(audio)
 }

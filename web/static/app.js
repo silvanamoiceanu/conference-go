@@ -7,7 +7,13 @@ const state = {
     matchResults:  [],
     selectedTarget: null,
     attendees:     [],
-    metrics: { sessions: 0, prospects: 0, emails: 0 }
+    metrics: { sessions: 0, prospects: 0, emails: 0 },
+    // Practice sandbox
+    practiceTarget:  null,
+    chatHistory:     [],   // [{role, content}]
+    isListening:     false,
+    isSpeaking:      false,
+    recognition:     null,
 };
 
 // ── Helpers ──
@@ -59,6 +65,7 @@ const VIEW_TITLES = {
     scout:     'Attendee Scout',
     matching:  'Strategic Match',
     email:     'Outreach Drafter',
+    practice:  'Pitch Practice',
 };
 
 function navigate(viewName) {
@@ -84,6 +91,11 @@ function navigate(viewName) {
     // Clear email badge when visiting email view
     if (viewName === 'email') {
         el('email-badge').classList.add('hidden');
+    }
+
+    // Show practice picker or session depending on state
+    if (viewName === 'practice') {
+        renderPracticeView();
     }
 }
 
@@ -155,16 +167,25 @@ function renderAttendeeGrid(list) {
             <div class="attendee-name">${person.name || 'Unknown'}</div>
             <div class="attendee-role">${[person.title, person.company].filter(Boolean).join(' · ') || 'No details'}</div>
             ${skillChips || interestChips ? `<div class="attendee-chips">${skillChips}${interestChips}</div>` : ''}
-            <div class="attendee-draft-btn">Draft Outreach →</div>
+            <div class="attendee-card-actions">
+                <div class="attendee-draft-btn">Draft Outreach</div>
+                <div class="attendee-practice-btn" data-attendee-index="${i}">Practice Pitch 🎙</div>
+            </div>
         </div>`;
     }).join('');
 
     // Store the rendered list reference so click handlers can look up by index
     const renderedList = list;
     grid.querySelectorAll('.attendee-card[data-attendee-index]').forEach(card => {
-        card.addEventListener('click', () => {
+        card.querySelector('.attendee-draft-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
             const idx = parseInt(card.dataset.attendeeIndex, 10);
             draftFromScout(renderedList[idx]);
+        });
+        card.querySelector('.attendee-practice-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = parseInt(card.dataset.attendeeIndex, 10);
+            startPracticeWith(renderedList[idx]);
         });
     });
 }
@@ -313,6 +334,7 @@ function renderMatchResults(results) {
             ${p.skills && p.skills.length ? `<div class="match-chips">${chips(p.skills, 4)}</div>` : ''}
             <div class="match-result-actions">
                 <button class="draft-btn" data-match-index="${i}">Draft Outreach →</button>
+                <button class="practice-btn" data-match-index="${i}">Practice Pitch 🎙</button>
             </div>
         </div>`;
     }).join('');
@@ -322,6 +344,12 @@ function renderMatchResults(results) {
         btn.addEventListener('click', () => {
             const idx = parseInt(btn.dataset.matchIndex, 10);
             selectAndDraft(state.matchResults[idx].person);
+        });
+    });
+    container.querySelectorAll('.practice-btn[data-match-index]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.matchIndex, 10);
+            startPracticeWith(state.matchResults[idx].person);
         });
     });
 }
@@ -459,4 +487,269 @@ function hideProfileModal() {
 
 function closeModalOnBackdrop(e) {
     if (e.target === el('profile-modal')) hideProfileModal();
+}
+
+
+// ═══════════════════════════════════════════════════════
+// PITCH PRACTICE
+// ═══════════════════════════════════════════════════════
+
+// Voice pool — assigned deterministically by name so it's stable across sessions
+const PRACTICE_VOICES = ['Kore', 'Zephyr', 'Puck', 'Charon', 'Fenrir', 'Leda', 'Sulafat'];
+
+function voiceForPerson(name) {
+    let h = 0;
+    for (const c of (name || '')) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
+    return PRACTICE_VOICES[Math.abs(h) % PRACTICE_VOICES.length];
+}
+
+function startPracticeWith(person) {
+    state.practiceTarget = person;
+    state.chatHistory = [];
+    navigate('practice');
+}
+
+function resetPractice() {
+    state.practiceTarget = null;
+    state.chatHistory = [];
+    stopMic();
+    renderPracticeView();
+}
+
+function restartConversation() {
+    state.chatHistory = [];
+    stopMic();
+    el('practice-transcript').innerHTML = '';
+    openingGreeting();
+}
+
+function renderPracticeView() {
+    if (!state.practiceTarget) {
+        el('practice-picker').classList.remove('hidden');
+        el('practice-session').classList.add('hidden');
+        return;
+    }
+
+    el('practice-picker').classList.add('hidden');
+    el('practice-session').classList.remove('hidden');
+
+    const p = state.practiceTarget;
+    el('practice-persona-card').innerHTML = `
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+            <div class="attendee-avatar" style="width:40px;height:40px;font-size:0.875rem;">${initials(p.name)}</div>
+            <div>
+                <div style="font-weight:600;font-size:0.9rem;">${p.name}</div>
+                <div style="font-size:0.78rem;color:var(--on-surface-variant);">${[p.title, p.company].filter(Boolean).join(' · ')}</div>
+            </div>
+        </div>
+        ${p.skills && p.skills.length ? `<div class="intel-chips" style="margin-bottom:0.5rem;">${chips(p.skills, 4)}</div>` : ''}
+        ${p.interests && p.interests.length ? `<div class="intel-chips">${chips(p.interests, 3)}</div>` : ''}
+    `;
+
+    // Start with a greeting if transcript is empty
+    if (el('practice-transcript').innerHTML.trim() === '') {
+        openingGreeting();
+    }
+}
+
+function openingGreeting() {
+    const p = state.practiceTarget;
+    const greeting = `Hi! I'm ${p.name}, ${p.title} at ${p.company}. Great to meet you here at the conference — what brings you to Global Tech Summit this year?`;
+    appendMessage('model', greeting);
+    state.chatHistory.push({ role: 'model', content: greeting });
+    speakText(greeting);
+}
+
+// ── Transcript rendering ──
+
+function appendMessage(role, content) {
+    const transcript = el('practice-transcript');
+    const div = document.createElement('div');
+    div.className = `practice-message practice-message--${role}`;
+
+    const label = role === 'user' ? 'You' : (state.practiceTarget ? state.practiceTarget.name.split(' ')[0] : 'Them');
+    div.innerHTML = `
+        <div class="practice-msg-label">${label}</div>
+        <div class="practice-msg-bubble">${content}</div>
+    `;
+    transcript.appendChild(div);
+    transcript.scrollTop = transcript.scrollHeight;
+}
+
+function setStatus(text, active = false) {
+    const el2 = el('practice-status-text');
+    el2.textContent = text;
+    el('practice-status').classList.toggle('practice-status--active', active);
+}
+
+// ── Sending messages ──
+
+async function sendUserMessage(text) {
+    if (!text.trim() || !state.practiceTarget) return;
+
+    appendMessage('user', text);
+    state.chatHistory.push({ role: 'user', content: text });
+
+    setStatus(`${state.practiceTarget.name.split(' ')[0]} is thinking…`, true);
+    el('mic-btn').disabled = true;
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                person: state.practiceTarget,
+                history: state.chatHistory.slice(0, -1), // exclude the just-added user msg
+                message: text,
+            }),
+        });
+        const data = await res.json();
+        if (data.error) {
+            setStatus(`Error: ${data.error}`);
+            return;
+        }
+
+        const reply = data.reply;
+        appendMessage('model', reply);
+        state.chatHistory.push({ role: 'model', content: reply });
+        setStatus('');
+        await speakText(reply);
+    } catch (err) {
+        setStatus('Failed to get response. Please try again.');
+    } finally {
+        el('mic-btn').disabled = false;
+    }
+}
+
+function sendTextMessage() {
+    const input = el('practice-text-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendUserMessage(text);
+}
+
+// ── TTS playback ──
+
+async function speakText(text) {
+    if (!text) return;
+    state.isSpeaking = true;
+    setStatus('Speaking…', true);
+
+    try {
+        const voice = voiceForPerson(state.practiceTarget?.name);
+        const res = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice }),
+        });
+
+        if (!res.ok) {
+            // TTS failed silently — the text is still visible in the transcript
+            console.warn('TTS request failed:', res.status);
+            return;
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+
+        await new Promise((resolve) => {
+            audio.onended = resolve;
+            audio.onerror = resolve;
+            audio.play().catch(resolve);
+        });
+
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        console.warn('TTS playback error:', err);
+    } finally {
+        state.isSpeaking = false;
+        setStatus('');
+    }
+}
+
+// ── Speech recognition (STT) ──
+
+function initRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+
+    const rec = new SR();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+
+    rec.onstart = () => {
+        state.isListening = true;
+        el('mic-btn').classList.add('mic-button--recording');
+        el('mic-label').textContent = 'Listening…';
+        setStatus('Listening — speak now', true);
+    };
+
+    rec.onresult = (event) => {
+        let interim = '';
+        let final = '';
+        for (const result of event.results) {
+            if (result.isFinal) final += result[0].transcript;
+            else interim += result[0].transcript;
+        }
+        setStatus(final || interim || 'Listening…', true);
+        if (final) {
+            stopMic();
+            sendUserMessage(final.trim());
+        }
+    };
+
+    rec.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+            setStatus('Microphone access denied. Use the text input below.');
+        } else {
+            setStatus('');
+        }
+        stopMic();
+    };
+
+    rec.onend = () => {
+        stopMic();
+    };
+
+    return rec;
+}
+
+function toggleMic() {
+    if (state.isSpeaking) return; // don't interrupt TTS
+
+    if (state.isListening) {
+        stopMic();
+        return;
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+        setStatus('Speech recognition not supported in this browser. Use the text input below.');
+        return;
+    }
+
+    if (!state.recognition) {
+        state.recognition = initRecognition();
+    }
+
+    try {
+        state.recognition.start();
+    } catch (e) {
+        // Already started — stop and restart
+        state.recognition.stop();
+        setTimeout(() => state.recognition && state.recognition.start(), 200);
+    }
+}
+
+function stopMic() {
+    state.isListening = false;
+    el('mic-btn').classList.remove('mic-button--recording');
+    el('mic-label').textContent = 'Tap to Speak';
+    if (state.recognition) {
+        try { state.recognition.stop(); } catch (_) {}
+    }
 }

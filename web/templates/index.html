@@ -82,6 +82,15 @@
                 Outreach Drafter
                 <span class="nav-badge hidden" id="email-badge">•</span>
             </button>
+            <button class="nav-item" data-view="practice" id="nav-practice">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                Pitch Practice
+            </button>
         </nav>
 
         <div class="sidebar-footer">
@@ -369,6 +378,97 @@
                         <div style="color: var(--on-surface-variant); font-size: 0.875rem;">Crafting personalized outreach…</div>
                     </div>
                     <textarea class="email-textarea" id="emailText" placeholder="Select a prospect and click 'Draft Outreach' to generate a personalized, intelligence-backed email."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── PITCH PRACTICE ── -->
+        <div id="view-practice" class="view hidden">
+            <div class="view-header" style="margin-bottom: 1.25rem;">
+                <div>
+                    <div class="overline">AI VOICE SIMULATION · PRACTICE SANDBOX</div>
+                    <h1 class="view-title">Pitch Practice</h1>
+                    <p class="view-subtitle">Rehearse your introduction with an AI-simulated attendee. Speak naturally — refine until it clicks.</p>
+                </div>
+            </div>
+
+            <!-- Person picker (shown when no target selected) -->
+            <div id="practice-picker" class="practice-picker hidden">
+                <div class="practice-picker-inner">
+                    <div class="practice-picker-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                    </div>
+                    <div class="practice-picker-text">Choose an attendee to practice with</div>
+                    <div class="practice-picker-sub">Select from the Attendee Scout or Strategic Match, then return here to begin your session.</div>
+                    <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-top:1.25rem;">
+                        <button class="btn-primary" onclick="navigate('scout')">Browse Attendees →</button>
+                        <button class="btn-secondary" onclick="navigate('matching')">Strategic Match →</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active session -->
+            <div id="practice-session" class="practice-layout hidden">
+
+                <!-- Left: person profile + tips -->
+                <div class="practice-sidebar">
+                    <div class="dash-panel practice-persona-panel">
+                        <div class="panel-header" style="margin-bottom:0.75rem;">
+                            <div class="panel-title">Simulating</div>
+                            <button class="btn-ghost" style="font-size:0.75rem;padding:0.25rem 0.5rem;" onclick="resetPractice()">Change →</button>
+                        </div>
+                        <div id="practice-persona-card"></div>
+                    </div>
+
+                    <div class="dash-panel" style="margin-top:1rem;">
+                        <div class="panel-header" style="margin-bottom:0.75rem;">
+                            <div class="panel-title">Coaching Tips</div>
+                        </div>
+                        <ul class="practice-tips">
+                            <li>Lead with <strong>who you are</strong> and what problem you solve</li>
+                            <li>Reference their <strong>specific work</strong> to show you've done homework</li>
+                            <li>Ask one <strong>clear question</strong> to invite them into the conversation</li>
+                            <li>Aim for under <strong>30 seconds</strong> for your opener</li>
+                            <li>End with a <strong>concrete ask</strong> — coffee, a call, or a follow-up</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Right: transcript + controls -->
+                <div class="practice-main">
+                    <div class="conversation-transcript" id="practice-transcript">
+                        <!-- Messages injected here -->
+                    </div>
+
+                    <!-- Status bar -->
+                    <div class="practice-status" id="practice-status">
+                        <span id="practice-status-text" class="practice-status-text"></span>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="practice-controls">
+                        <button class="mic-button" id="mic-btn" onclick="toggleMic()">
+                            <svg id="mic-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                            </svg>
+                            <span id="mic-label">Tap to Speak</span>
+                        </button>
+
+                        <div class="practice-text-fallback">
+                            <input class="field-input" type="text" id="practice-text-input"
+                                placeholder="Or type your message and press Enter…"
+                                onkeydown="if(event.key==='Enter')sendTextMessage()">
+                            <button class="btn-secondary" onclick="sendTextMessage()">Send</button>
+                        </div>
+
+                        <button class="btn-ghost practice-restart" onclick="restartConversation()">↺ Restart Session</button>
+                    </div>
                 </div>
             </div>
         </div>

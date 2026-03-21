@@ -957,11 +957,269 @@ a { color: inherit; text-decoration: none; }
 /* ═══════════════════════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   PITCH PRACTICE
+   ═══════════════════════════════════════════════════════ */
+
+/* Person picker empty state */
+.practice-picker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+.practice-picker-inner {
+    text-align: center;
+    max-width: 420px;
+}
+.practice-picker-icon { margin-bottom: 1.25rem; }
+.practice-picker-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    margin-bottom: 0.5rem;
+}
+.practice-picker-sub {
+    font-size: 0.875rem;
+    color: var(--on-surface-variant);
+    line-height: 1.5;
+}
+
+/* Two-column layout */
+.practice-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.25rem;
+    height: calc(100vh - 10rem);
+    min-height: 500px;
+}
+
+/* Left sidebar */
+.practice-sidebar {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+.practice-persona-panel { flex-shrink: 0; }
+
+.practice-tips {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+.practice-tips li {
+    font-size: 0.8rem;
+    color: var(--on-surface-variant);
+    padding-left: 1rem;
+    position: relative;
+    line-height: 1.5;
+}
+.practice-tips li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--primary);
+    font-weight: 700;
+}
+.practice-tips strong { color: var(--on-surface); }
+
+/* Right main area */
+.practice-main {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+
+/* Transcript scroll area */
+.conversation-transcript {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Message bubbles */
+.practice-message {
+    display: flex;
+    flex-direction: column;
+    max-width: 72%;
+}
+.practice-message--user {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+.practice-message--model {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+.practice-msg-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
+    margin-bottom: 0.3rem;
+}
+.practice-msg-bubble {
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-lg);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+.practice-message--user .practice-msg-bubble {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-bottom-right-radius: var(--radius-sm);
+}
+.practice-message--model .practice-msg-bubble {
+    background: var(--surface-container);
+    color: var(--on-surface);
+    border-bottom-left-radius: var(--radius-sm);
+}
+
+/* Status bar */
+.practice-status {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0 1.25rem;
+    border-top: 1px solid var(--outline-variant);
+    background: var(--surface-low);
+}
+.practice-status-text {
+    font-size: 0.78rem;
+    color: var(--on-surface-variant);
+    font-style: italic;
+}
+.practice-status--active .practice-status-text {
+    color: var(--primary);
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* Controls bar */
+.practice-controls {
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.875rem;
+    border-top: 1px solid var(--outline-variant);
+    background: var(--surface-lowest);
+}
+
+/* Mic button */
+.mic-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--surface-container);
+    border: 2px solid var(--outline-variant);
+    color: var(--on-surface);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    transition: all var(--transition);
+    cursor: pointer;
+}
+.mic-button:hover:not(:disabled) {
+    background: var(--secondary-container);
+    border-color: var(--primary);
+    color: var(--on-secondary);
+    transform: scale(1.05);
+}
+.mic-button--recording {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: var(--on-primary) !important;
+    box-shadow: 0 0 0 6px rgba(177, 49, 215, 0.2);
+    animation: mic-pulse 1.4s ease-in-out infinite;
+}
+.mic-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+@keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(177, 49, 215, 0.2); }
+    50%       { box-shadow: 0 0 0 10px rgba(177, 49, 215, 0.05); }
+}
+#mic-label { pointer-events: none; }
+
+/* Text fallback */
+.practice-text-fallback {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}
+.practice-text-fallback .field-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.practice-restart {
+    font-size: 0.78rem;
+    color: var(--on-surface-variant);
+    padding: 0.25rem 0.5rem;
+}
+
+/* Attendee card actions row */
+.attendee-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.attendee-draft-btn, .attendee-practice-btn {
+    flex: 1;
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.45rem 0.25rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition);
+}
+.attendee-draft-btn {
+    background: var(--surface-container);
+    color: var(--on-surface-variant);
+}
+.attendee-draft-btn:hover { background: var(--surface-high); }
+.attendee-practice-btn {
+    background: var(--secondary-container);
+    color: var(--on-secondary);
+}
+.attendee-practice-btn:hover { background: var(--primary-container); color: var(--on-primary); }
+
+/* Practice button in match results */
+.practice-btn {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.45rem 0.875rem;
+    border-radius: var(--radius-md);
+    background: var(--secondary-container);
+    color: var(--on-secondary);
+    border: none;
+    cursor: pointer;
+    transition: background var(--transition);
+}
+.practice-btn:hover { background: var(--primary-container); color: var(--on-primary); }
+
 @media (max-width: 1100px) {
     .metric-grid { grid-template-columns: repeat(2, 1fr); }
     .dash-grid { grid-template-columns: 1fr; }
     .matching-layout { grid-template-columns: 1fr; }
     .email-layout { grid-template-columns: 1fr; height: auto; }
+    .practice-layout { grid-template-columns: 1fr; height: auto; }
 }
 
 @media (max-width: 768px) {
