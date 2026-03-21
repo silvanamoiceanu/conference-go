@@ -5,29 +5,29 @@
 
 /* ── Design Tokens ── */
 :root {
-    --primary:              #003ec7;
-    --primary-container:    #0052ff;
+    --primary:              #b131d7;
+    --primary-container:    #ba73e1;
     --on-primary:           #ffffff;
 
-    --surface:              #f8f9ff;
+    --surface:              #faf8ff;
     --surface-lowest:       #ffffff;
-    --surface-low:          #eff4ff;
-    --surface-container:    #e5eeff;
-    --surface-high:         #dce9ff;
-    --surface-highest:      #c3d1f5;
+    --surface-low:          #f5efff;
+    --surface-container:    #ede3ff;
+    --surface-high:         #e2d4f7;
+    --surface-highest:      #d4c2ef;
 
-    --on-surface:           #0b1c30;
-    --on-surface-variant:   #434656;
-    --secondary-container:  #d5e3fd;
-    --on-secondary:         #57657b;
-    --outline-variant:      rgba(195, 197, 217, 0.3);
-    --tertiary:             #464e64;
+    --on-surface:           #1e1a2e;
+    --on-surface-variant:   #4a4460;
+    --secondary-container:  #f0d9f8;
+    --on-secondary:         #6b3a7d;
+    --outline-variant:      rgba(186, 115, 225, 0.2);
+    --tertiary:             #5b586b;
 
-    --sidebar-bg:           #0b1c30;
-    --sidebar-text:         rgba(255,255,255,0.6);
+    --sidebar-bg:           #5b586b;
+    --sidebar-text:         rgba(255,255,255,0.65);
     --sidebar-text-active:  #ffffff;
-    --sidebar-active-bg:    rgba(255,255,255,0.08);
-    --sidebar-hover-bg:     rgba(255,255,255,0.05);
+    --sidebar-active-bg:    rgba(177, 49, 215, 0.3);
+    --sidebar-hover-bg:     rgba(255,255,255,0.08);
 
     --shadow-float:         0 8px 32px rgba(11, 28, 48, 0.08);
     --shadow-card:          0 2px 12px rgba(11, 28, 48, 0.05);
