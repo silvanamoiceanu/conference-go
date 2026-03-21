@@ -140,14 +140,14 @@ function renderAttendeeGrid(list) {
         return;
     }
 
-    grid.innerHTML = list.map(person => {
+    grid.innerHTML = list.map((person, i) => {
         const matchBadge = person._score
             ? `<span class="match-badge">${(person._score * 100).toFixed(0)}% match</span>` : '';
         const skillChips = chips(person.skills, 3);
         const interestChips = chips(person.interests, 2);
 
         return `
-        <div class="attendee-card" onclick="draftFromScout(${JSON.stringify(JSON.stringify(person))})">
+        <div class="attendee-card" data-attendee-index="${i}">
             <div class="attendee-card-top">
                 <div class="attendee-avatar">${initials(person.name)}</div>
                 ${matchBadge}
@@ -158,10 +158,18 @@ function renderAttendeeGrid(list) {
             <div class="attendee-draft-btn">Draft Outreach →</div>
         </div>`;
     }).join('');
+
+    // Store the rendered list reference so click handlers can look up by index
+    const renderedList = list;
+    grid.querySelectorAll('.attendee-card[data-attendee-index]').forEach(card => {
+        card.addEventListener('click', () => {
+            const idx = parseInt(card.dataset.attendeeIndex, 10);
+            draftFromScout(renderedList[idx]);
+        });
+    });
 }
 
-function draftFromScout(personJson) {
-    const person = JSON.parse(personJson);
+function draftFromScout(person) {
     state.selectedTarget = person;
     navigate('email');
     renderIntelPanel(person);
@@ -304,10 +312,18 @@ function renderMatchResults(results) {
             </div>
             ${p.skills && p.skills.length ? `<div class="match-chips">${chips(p.skills, 4)}</div>` : ''}
             <div class="match-result-actions">
-                <button class="draft-btn" onclick='selectAndDraft(${JSON.stringify(JSON.stringify(p))})'>Draft Outreach →</button>
+                <button class="draft-btn" data-match-index="${i}">Draft Outreach →</button>
             </div>
         </div>`;
     }).join('');
+
+    // Attach listeners after rendering to avoid JSON-in-attribute issues
+    container.querySelectorAll('.draft-btn[data-match-index]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.matchIndex, 10);
+            selectAndDraft(state.matchResults[idx].person);
+        });
+    });
 }
 
 function showMatchError(msg) {
@@ -319,8 +335,7 @@ function showMatchError(msg) {
 // ═══════════════════════════════════════════════════════
 // EMAIL DRAFTER
 // ═══════════════════════════════════════════════════════
-function selectAndDraft(personJson) {
-    const person = JSON.parse(personJson);
+function selectAndDraft(person) {
     state.selectedTarget = person;
     el('email-badge').classList.remove('hidden');
     navigate('email');
@@ -357,7 +372,6 @@ async function generateEmail(toPerson) {
     el('emailText').value = '';
     el('email-generating').classList.remove('hidden');
     el('email-actions').classList.add('hidden');
-    el('email-actions').style.display = 'none';
 
     // If no user profile, use a generic sender
     const sender = from || { name: el('userName').textContent, description: 'conference attendee' };
@@ -379,7 +393,6 @@ async function generateEmail(toPerson) {
 
         el('emailText').value = data.email;
         el('email-actions').classList.remove('hidden');
-        el('email-actions').style.display = 'flex';
 
         state.metrics.emails++;
         updateMetrics();
