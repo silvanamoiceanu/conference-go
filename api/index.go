@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"crypto/sha256"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,9 @@ import (
 	"github.com/giorgio/conference-go/pkg/preprocessing"
 	"github.com/giorgio/conference-go/pkg/types"
 )
+
+//go:embed public
+var publicFS embed.FS
 
 type app struct {
 	preproc           *preprocessing.Preprocessor
@@ -84,7 +89,33 @@ func initApp() {
 		db:                db,
 	}
 
+	// Static file serving from embedded FS
+	subFS, err := fs.Sub(publicFS, "public")
+	if err != nil {
+		initErr = fmt.Errorf("embed fs: %w", err)
+		return
+	}
+	staticServer := http.FileServer(http.FS(subFS))
+
 	mux = http.NewServeMux()
+
+	// Static files and root
+	mux.Handle("/static/", staticServer)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		data, err := publicFS.ReadFile("public/index.html")
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Write(data)
+	})
+
+	// API routes
 	mux.HandleFunc("/api/match", globalApp.handleMatch)
 	mux.HandleFunc("/api/attendees/add", globalApp.handleAddAttendee)
 	mux.HandleFunc("/api/attendees", globalApp.handleAttendees)
@@ -92,11 +123,6 @@ func initApp() {
 	mux.HandleFunc("/api/email", globalApp.handleEmail)
 	mux.HandleFunc("/api/chat", globalApp.handleChat)
 	mux.HandleFunc("/api/tts", globalApp.handleTTS)
-}
-
-func descHash(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return fmt.Sprintf("%x", h[:8])
 }
 
 // Handler is the Vercel serverless entry point.
@@ -153,13 +179,20 @@ type ttsRequest struct {
 	Voice string `json:"voice,omitempty"`
 }
 
-// --- handlers ---
+// --- helpers ---
+
+func descHash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h[:8])
+}
 
 func sendJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
+
+// --- handlers ---
 
 func (a *app) handleMatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
