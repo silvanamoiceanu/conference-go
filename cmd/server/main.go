@@ -127,8 +127,6 @@ func main() {
 	}
 }
 
-const dbFile = "conference.db"
-
 func descHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", h[:8])
@@ -155,17 +153,22 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		return nil, fmt.Errorf("failed to create conversationalist: %w", err)
 	}
 
-	db, err := database.Open(dbFile)
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL environment variable must be set")
+	}
+
+	db, err := database.Open(ctx, dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	index := indexing.NewIndex()
 
-	// Load existing profiles from DB
-	existing, err := db.GetAll()
+	// Load existing profiles from DB into in-memory index
+	existing, err := db.GetAll(ctx)
 	if err != nil {
-		log.Printf("Warning: could not load profiles from DB (%v), will re-embed", err)
+		log.Printf("Warning: could not load profiles from DB (%v)", err)
 	} else {
 		fmt.Printf("Loaded %d profiles from database\n", len(existing))
 		for _, e := range existing {
@@ -186,7 +189,7 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 	var pending []string
 	var pendingIdx []int
 	for i, desc := range data.FakeDescriptions {
-		if !db.Has(descHash(desc)) {
+		if !db.Has(ctx, descHash(desc)) {
 			pending = append(pending, desc)
 			pendingIdx = append(pendingIdx, i)
 		}
@@ -228,7 +231,7 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 				continue
 			}
 			index.Add(r.person, r.emb)
-			if err := db.Save(&database.Entry{
+			if err := db.Save(ctx, &database.Entry{
 				DescHash:  descHash(r.desc),
 				Person:    r.person,
 				Embedding: r.emb,
@@ -474,7 +477,7 @@ func (app *App) handleAddAttendee(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := descHash(req.Description)
-	if app.db.Has(hash) {
+	if app.db.Has(r.Context(), hash) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(ProfileResponse{Error: "profile already exists"})
@@ -497,7 +500,7 @@ func (app *App) handleAddAttendee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := app.db.Save(&database.Entry{DescHash: hash, Person: person, Embedding: emb}); err != nil {
+	if err := app.db.Save(r.Context(), &database.Entry{DescHash: hash, Person: person, Embedding: emb}); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ProfileResponse{Error: fmt.Sprintf("failed to save profile: %v", err)})

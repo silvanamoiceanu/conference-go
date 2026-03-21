@@ -1,19 +1,20 @@
 package database
 
 import (
-	"database/sql"
-	"encoding/binary"
+	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 
-	_ "modernc.org/sqlite"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	pgvector "github.com/pgvector/pgvector-go"
+	pgxvector "github.com/pgvector/pgvector-go/pgx"
 
 	"github.com/giorgio/conference-go/pkg/types"
 )
 
 type DB struct {
-	db *sql.DB
+	pool *pgxpool.Pool
 }
 
 type Entry struct {
@@ -22,13 +23,35 @@ type Entry struct {
 	Embedding []float32
 }
 
-func Open(path string) (*DB, error) {
-	db, err := sql.Open("sqlite", path)
+func Open(ctx context.Context, connStr string) (*DB, error) {
+	// Use a plain connection first to ensure the vector extension exists
+	// before the pool tries to register the vector type in AfterConnect.
+	bootstrap, err := pgx.Connect(ctx, connStr)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, fmt.Errorf("connect to postgres: %w", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS profiles (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+	if _, err := bootstrap.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+		bootstrap.Close(ctx)
+		return nil, fmt.Errorf("create vector extension: %w", err)
+	}
+	bootstrap.Close(ctx)
+
+	config, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse db config: %w", err)
+	}
+	config.MaxConns = 5
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		return pgxvector.RegisterTypes(ctx, conn)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("create pool: %w", err)
+	}
+
+	if _, err := pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS profiles (
+		id SERIAL PRIMARY KEY,
 		desc_hash TEXT UNIQUE NOT NULL,
 		name TEXT NOT NULL,
 		title TEXT,
@@ -37,20 +60,21 @@ func Open(path string) (*DB, error) {
 		skills TEXT,
 		goals TEXT,
 		description TEXT,
-		embedding BLOB
+		embedding vector(3072)
 	)`); err != nil {
-		db.Close()
+		pool.Close()
 		return nil, fmt.Errorf("create table: %w", err)
 	}
-	return &DB{db: db}, nil
+
+	return &DB{pool: pool}, nil
 }
 
-func (d *DB) Close() error {
-	return d.db.Close()
+func (d *DB) Close() {
+	d.pool.Close()
 }
 
-func (d *DB) GetAll() ([]*Entry, error) {
-	rows, err := d.db.Query(`SELECT desc_hash, name, title, company, interests, skills, goals, description, embedding FROM profiles`)
+func (d *DB) GetAll(ctx context.Context) ([]*Entry, error) {
+	rows, err := d.pool.Query(ctx, `SELECT desc_hash, name, title, company, interests, skills, goals, description FROM profiles`)
 	if err != nil {
 		return nil, err
 	}
@@ -60,50 +84,71 @@ func (d *DB) GetAll() ([]*Entry, error) {
 	for rows.Next() {
 		e := &Entry{Person: &types.Person{}}
 		var interests, skills, goals string
-		var embBlob []byte
 		if err := rows.Scan(&e.DescHash, &e.Person.Name, &e.Person.Title, &e.Person.Company,
-			&interests, &skills, &goals, &e.Person.Description, &embBlob); err != nil {
+			&interests, &skills, &goals, &e.Person.Description); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(interests), &e.Person.Interests)
 		json.Unmarshal([]byte(skills), &e.Person.Skills)
 		json.Unmarshal([]byte(goals), &e.Person.Goals)
-		e.Embedding = blobToFloat32(embBlob)
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
 }
 
-func (d *DB) Has(hash string) bool {
+func (d *DB) Has(ctx context.Context, hash string) bool {
 	var n int
-	d.db.QueryRow(`SELECT COUNT(*) FROM profiles WHERE desc_hash = ?`, hash).Scan(&n)
+	d.pool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE desc_hash = $1`, hash).Scan(&n)
 	return n > 0
 }
 
-func (d *DB) Save(e *Entry) error {
+func (d *DB) Save(ctx context.Context, e *Entry) error {
 	interests, _ := json.Marshal(e.Person.Interests)
 	skills, _ := json.Marshal(e.Person.Skills)
 	goals, _ := json.Marshal(e.Person.Goals)
-	_, err := d.db.Exec(
-		`INSERT OR REPLACE INTO profiles (desc_hash, name, title, company, interests, skills, goals, description, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	vec := pgvector.NewVector(e.Embedding)
+	_, err := d.pool.Exec(ctx,
+		`INSERT INTO profiles (desc_hash, name, title, company, interests, skills, goals, description, embedding)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT (desc_hash) DO UPDATE SET
+		 name=EXCLUDED.name, title=EXCLUDED.title, company=EXCLUDED.company,
+		 interests=EXCLUDED.interests, skills=EXCLUDED.skills, goals=EXCLUDED.goals,
+		 description=EXCLUDED.description, embedding=EXCLUDED.embedding`,
 		e.DescHash, e.Person.Name, e.Person.Title, e.Person.Company,
-		string(interests), string(skills), string(goals), e.Person.Description, float32ToBlob(e.Embedding),
+		string(interests), string(skills), string(goals), e.Person.Description, vec,
 	)
 	return err
 }
 
-func float32ToBlob(f []float32) []byte {
-	b := make([]byte, len(f)*4)
-	for i, v := range f {
-		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(v))
+func (d *DB) SearchByEmbedding(ctx context.Context, emb []float32, topK int) ([]*types.Person, []float32, error) {
+	vec := pgvector.NewVector(emb)
+	rows, err := d.pool.Query(ctx,
+		`SELECT name, title, company, interests, skills, goals, description,
+		        1 - (embedding <=> $1) AS similarity
+		 FROM profiles
+		 ORDER BY embedding <=> $1
+		 LIMIT $2`,
+		vec, topK,
+	)
+	if err != nil {
+		return nil, nil, err
 	}
-	return b
-}
+	defer rows.Close()
 
-func blobToFloat32(b []byte) []float32 {
-	f := make([]float32, len(b)/4)
-	for i := range f {
-		f[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
+	var persons []*types.Person
+	var sims []float32
+	for rows.Next() {
+		p := &types.Person{}
+		var interests, skills, goals string
+		var sim float32
+		if err := rows.Scan(&p.Name, &p.Title, &p.Company, &interests, &skills, &goals, &p.Description, &sim); err != nil {
+			return nil, nil, err
+		}
+		json.Unmarshal([]byte(interests), &p.Interests)
+		json.Unmarshal([]byte(skills), &p.Skills)
+		json.Unmarshal([]byte(goals), &p.Goals)
+		persons = append(persons, p)
+		sims = append(sims, sim)
 	}
-	return f
+	return persons, sims, rows.Err()
 }
