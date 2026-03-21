@@ -17,6 +17,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/giorgio/conference-go/pkg/conversation"
 	"github.com/giorgio/conference-go/pkg/data"
+	"github.com/giorgio/conference-go/pkg/database"
 	"github.com/giorgio/conference-go/pkg/email"
 	"github.com/giorgio/conference-go/pkg/embedding"
 	"github.com/giorgio/conference-go/pkg/indexing"
@@ -25,11 +26,12 @@ import (
 )
 
 type App struct {
-	preproc          *preprocessing.Preprocessor
-	embedder         *embedding.Embedder
-	index            *indexing.Index
-	writer           *email.Writer
+	preproc           *preprocessing.Preprocessor
+	embedder          *embedding.Embedder
+	index             *indexing.Index
+	writer            *email.Writer
 	conversationalist *conversation.Conversationalist
+	db                *database.DB
 }
 
 type MatchRequest struct {
@@ -125,44 +127,11 @@ func main() {
 	}
 }
 
-const cacheFile = "embeddings_cache.json"
-
-type cacheEntry struct {
-	DescHash  string        `json:"desc_hash"`
-	Person    *types.Person `json:"person"`
-	Embedding []float32     `json:"embedding"`
-}
+const dbFile = "conference.db"
 
 func descHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", h[:8])
-}
-
-func loadCache() (map[string]*cacheEntry, error) {
-	b, err := os.ReadFile(cacheFile)
-	if err != nil {
-		return nil, err
-	}
-	var entries []*cacheEntry
-	if err := json.Unmarshal(b, &entries); err != nil {
-		return nil, err
-	}
-	m := make(map[string]*cacheEntry, len(entries))
-	for _, e := range entries {
-		m[e.DescHash] = e
-	}
-	return m, nil
-}
-
-func saveCache(entries []*cacheEntry) {
-	b, err := json.Marshal(entries)
-	if err != nil {
-		log.Printf("Warning: failed to marshal cache: %v", err)
-		return
-	}
-	if err := os.WriteFile(cacheFile, b, 0644); err != nil {
-		log.Printf("Warning: failed to write cache: %v", err)
-	}
 }
 
 func initializeApp(ctx context.Context, apiKey string) (*App, error) {
@@ -186,20 +155,26 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		return nil, fmt.Errorf("failed to create conversationalist: %w", err)
 	}
 
-	index := indexing.NewIndex()
-
-	// Load existing cache
-	cache, err := loadCache()
+	db, err := database.Open(dbFile)
 	if err != nil {
-		cache = make(map[string]*cacheEntry)
-		if !os.IsNotExist(err) {
-			log.Printf("Warning: could not load cache (%v), will re-embed", err)
-		}
-	} else {
-		fmt.Printf("Loaded cache with %d entries\n", len(cache))
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	fmt.Println("Loading and embedding descriptions...")
+	index := indexing.NewIndex()
+
+	// Load existing profiles from DB
+	existing, err := db.GetAll()
+	if err != nil {
+		log.Printf("Warning: could not load profiles from DB (%v), will re-embed", err)
+	} else {
+		fmt.Printf("Loaded %d profiles from database\n", len(existing))
+		for _, e := range existing {
+			index.Add(e.Person, e.Embedding)
+		}
+	}
+
+	// Find descriptions not yet in DB and process them
+	fmt.Println("Checking for new descriptions to embed...")
 
 	type initResult struct {
 		person *types.Person
@@ -208,89 +183,75 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		err    error
 	}
 
-	results := make([]initResult, len(data.FakeDescriptions))
-	const maxConcurrent = 10
-	sem := make(chan struct{}, maxConcurrent)
-	var wg sync.WaitGroup
-
+	var pending []string
+	var pendingIdx []int
 	for i, desc := range data.FakeDescriptions {
-		// Serve from cache if available
-		if entry, ok := cache[descHash(desc)]; ok {
-			results[i] = initResult{person: entry.Person, emb: entry.Embedding, desc: desc}
-			continue
+		if !db.Has(descHash(desc)) {
+			pending = append(pending, desc)
+			pendingIdx = append(pendingIdx, i)
 		}
-
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, desc string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			person, err := preproc.ProcessDescription(desc)
-			if err != nil {
-				results[i] = initResult{err: fmt.Errorf("preprocess: %w", err)}
-				return
-			}
-			emb, err := embedder.EmbedPerson(person)
-			if err != nil {
-				results[i] = initResult{err: fmt.Errorf("embed %s: %w", person.Name, err)}
-				return
-			}
-			results[i] = initResult{person: person, emb: emb, desc: desc}
-		}(i, desc)
 	}
-	wg.Wait()
 
-	// Collect new entries to add to cache
-	var newEntries []*cacheEntry
-	loadedCount := 0
-	failedCount := 0
-	for i, r := range results {
-		if r.err != nil {
-			log.Printf("Failed description %d: %v", i, r.err)
-			failedCount++
-			continue
+	if len(pending) > 0 {
+		fmt.Printf("Processing %d new descriptions...\n", len(pending))
+		results := make([]initResult, len(pending))
+		const maxConcurrent = 10
+		sem := make(chan struct{}, maxConcurrent)
+		var wg sync.WaitGroup
+
+		for i, desc := range pending {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(i int, desc string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				person, err := preproc.ProcessDescription(desc)
+				if err != nil {
+					results[i] = initResult{err: fmt.Errorf("preprocess: %w", err)}
+					return
+				}
+				emb, err := embedder.EmbedPerson(person)
+				if err != nil {
+					results[i] = initResult{err: fmt.Errorf("embed %s: %w", person.Name, err)}
+					return
+				}
+				results[i] = initResult{person: person, emb: emb, desc: desc}
+			}(i, desc)
 		}
-		index.Add(r.person, r.emb)
-		fmt.Printf("Loaded person %d: %s\n", i+1, r.person.Name)
-		loadedCount++
-		if _, cached := cache[descHash(r.desc)]; !cached {
-			newEntries = append(newEntries, &cacheEntry{
+		wg.Wait()
+
+		newCount := 0
+		for i, r := range results {
+			if r.err != nil {
+				log.Printf("Failed description %d: %v", pendingIdx[i], r.err)
+				continue
+			}
+			index.Add(r.person, r.emb)
+			if err := db.Save(&database.Entry{
 				DescHash:  descHash(r.desc),
 				Person:    r.person,
 				Embedding: r.emb,
-			})
+			}); err != nil {
+				log.Printf("Warning: failed to save profile %s to DB: %v", r.person.Name, err)
+			}
+			newCount++
 		}
+		fmt.Printf("Saved %d new profiles to database\n", newCount)
 	}
 
-	// Persist updated cache
-	if len(newEntries) > 0 {
-		allEntries := make([]*cacheEntry, 0, len(cache)+len(newEntries))
-		for _, e := range cache {
-			allEntries = append(allEntries, e)
-		}
-		allEntries = append(allEntries, newEntries...)
-		saveCache(allEntries)
-		fmt.Printf("Saved %d new entries to cache\n", len(newEntries))
-	}
-
-	if loadedCount == 0 {
+	if index.Size() == 0 {
 		return nil, fmt.Errorf("failed to load any person profiles - check your API key")
 	}
 
-	app := &App{
-		preproc:          preproc,
-		embedder:         embedder,
-		index:            index,
-		writer:           writer,
+	return &App{
+		preproc:           preproc,
+		embedder:          embedder,
+		index:             index,
+		writer:            writer,
 		conversationalist: conv,
-	}
-
-	if app.index.Size() == 0 {
-		return nil, fmt.Errorf("failed to load any person profiles - check your API key")
-	}
-
-	return app, nil
+		db:                db,
+	}, nil
 }
 
 func runCLI(app *App) {
@@ -403,6 +364,7 @@ func runWebServer(app *App, port string) {
 	// API endpoints
 	http.HandleFunc("/api/attendees", app.handleAttendees)
 	http.HandleFunc("/api/profile", app.handleProfile)
+	http.HandleFunc("/api/attendees/add", app.handleAddAttendee)
 	http.HandleFunc("/api/match", app.handleMatch)
 	http.HandleFunc("/api/email", app.handleEmail)
 	http.HandleFunc("/api/chat", app.handleChat)
@@ -488,6 +450,65 @@ func (app *App) handleAttendees(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"attendees": persons, "total": len(persons)})
+}
+
+func (app *App) handleAddAttendee(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if app.preproc == nil || app.embedder == nil || app.index == nil || app.db == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: "Server not initialized"})
+		return
+	}
+
+	var req MatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Description == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: "description is required"})
+		return
+	}
+
+	hash := descHash(req.Description)
+	if app.db.Has(hash) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: "profile already exists"})
+		return
+	}
+
+	person, err := app.preproc.ProcessDescription(req.Description)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: fmt.Sprintf("failed to process description: %v", err)})
+		return
+	}
+
+	emb, err := app.embedder.EmbedPerson(person)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: fmt.Sprintf("failed to embed profile: %v", err)})
+		return
+	}
+
+	if err := app.db.Save(&database.Entry{DescHash: hash, Person: person, Embedding: emb}); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: fmt.Sprintf("failed to save profile: %v", err)})
+		return
+	}
+
+	app.index.Add(person, emb)
+	log.Printf("Added new attendee: %s (%s at %s)", person.Name, person.Title, person.Company)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ProfileResponse{Person: person})
 }
 
 func (app *App) handleProfile(w http.ResponseWriter, r *http.Request) {

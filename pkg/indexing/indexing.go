@@ -3,11 +3,13 @@ package indexing
 import (
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/giorgio/conference-go/pkg/types"
 )
 
 type Index struct {
+	mu         sync.RWMutex
 	persons    []*types.Person
 	embeddings [][]float32
 }
@@ -20,19 +22,27 @@ func NewIndex() *Index {
 }
 
 func (i *Index) Add(person *types.Person, embedding []float32) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
 	i.persons = append(i.persons, person)
 	i.embeddings = append(i.embeddings, embedding)
 }
 
 func (i *Index) Size() int {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 	return len(i.persons)
 }
 
 func (i *Index) Persons() []*types.Person {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 	return i.persons
 }
 
 func (i *Index) Search(queryEmbedding []float32, topK int) []*SearchResult {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 	results := make([]*SearchResult, 0, len(i.persons))
 
 	for idx, emb := range i.embeddings {
