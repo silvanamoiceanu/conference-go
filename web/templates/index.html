@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conference Connection Matcher</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤝 Conference Connection Matcher</h1>
+            <p>Find your ideal conference connections using AI-powered matching</p>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <h2>Describe Your Ideal Connection</h2>
+                <form id="connectionForm">
+                    <textarea
+                        id="description"
+                        name="description"
+                        placeholder="e.g., Looking for a senior AI engineer interested in machine learning ethics and open-source contributions, who enjoys hiking and mentoring."
+                        required
+                    ></textarea>
+                    <button type="submit" id="submitBtn">Find Matches</button>
+                </form>
+            </section>
+
+            <section class="status-section" id="statusSection" style="display: none;">
+                <h3>Processing...</h3>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <div id="statusMessage">Initializing...</div>
+            </section>
+
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <h2>Your Top Matches</h2>
+                <div id="resultsContainer"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
