@@ -71,15 +71,24 @@ a { color: inherit; text-decoration: none; }
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--sidebar-bg);
+    background: url('/static/login-bg.png') center center / cover no-repeat;
     position: relative;
     overflow: hidden;
+}
+
+/* Soft overlay so the card is legible against the bright illustration */
+.login-screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(30, 10, 50, 0.55) 0%, rgba(91, 88, 107, 0.35) 100%);
+    pointer-events: none;
 }
 
 .login-glow {
     position: absolute;
     width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(0, 62, 199, 0.25) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(177, 49, 215, 0.2) 0%, transparent 70%);
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
@@ -88,13 +97,13 @@ a { color: inherit; text-decoration: none; }
 .login-card {
     position: relative;
     width: 420px;
-    background: rgba(255,255,255,0.04);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border-radius: var(--radius-xl);
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2);
     padding: 2.5rem;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.35);
 }
 
 .login-brand {
