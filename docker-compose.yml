@@ -1,0 +1,9 @@
+services:
+  conference-go:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./embeddings_cache.json:/app/embeddings_cache.json
