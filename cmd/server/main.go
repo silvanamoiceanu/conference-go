@@ -2,18 +2,24 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"html/template"
 	"log"
+	"math"
 	"net/http"
 	"os"
+	"sync"
 
+	"github.com/joho/godotenv"
 	"github.com/giorgio/conference-go/pkg/data"
 	"github.com/giorgio/conference-go/pkg/embedding"
 	"github.com/giorgio/conference-go/pkg/indexing"
 	"github.com/giorgio/conference-go/pkg/preprocessing"
+	"github.com/giorgio/conference-go/pkg/types"
 )
 
 type App struct {
@@ -34,11 +40,16 @@ type MatchResponse struct {
 func main() {
 	var webMode = flag.Bool("web", false, "Run in web server mode")
 	var port = flag.String("port", "8080", "Port for web server")
+	var evalMode = flag.Bool("eval", false, "Run evaluation metrics")
 	flag.Parse()
 
 	ctx := context.Background()
 
+	// Load environment variables from .env (if present). CLI env vars still override.
+	_ = godotenv.Load(".env")
+
 	apiKey := os.Getenv("GOOGLE_API_KEY")
+	var app *App
 	if apiKey == "" {
 		log.Println("Warning: GOOGLE_API_KEY environment variable not set")
 		if !*webMode {
@@ -61,6 +72,14 @@ func main() {
 		}
 	}
 
+	if *evalMode {
+		if app.index == nil || app.index.Size() == 0 {
+			log.Fatal("No person profiles loaded. Cannot run evaluation.")
+		}
+		runEvaluation(app)
+		return
+	}
+
 	if *webMode {
 		runWebServer(app, *port)
 	} else {
@@ -68,6 +87,46 @@ func main() {
 			log.Fatal("No person profiles loaded. Cannot run in CLI mode.")
 		}
 		runCLI(app)
+	}
+}
+
+const cacheFile = "embeddings_cache.json"
+
+type cacheEntry struct {
+	DescHash  string        `json:"desc_hash"`
+	Person    *types.Person `json:"person"`
+	Embedding []float32     `json:"embedding"`
+}
+
+func descHash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h[:8])
+}
+
+func loadCache() (map[string]*cacheEntry, error) {
+	b, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return nil, err
+	}
+	var entries []*cacheEntry
+	if err := json.Unmarshal(b, &entries); err != nil {
+		return nil, err
+	}
+	m := make(map[string]*cacheEntry, len(entries))
+	for _, e := range entries {
+		m[e.DescHash] = e
+	}
+	return m, nil
+}
+
+func saveCache(entries []*cacheEntry) {
+	b, err := json.Marshal(entries)
+	if err != nil {
+		log.Printf("Warning: failed to marshal cache: %v", err)
+		return
+	}
+	if err := os.WriteFile(cacheFile, b, 0644); err != nil {
+		log.Printf("Warning: failed to write cache: %v", err)
 	}
 }
 
@@ -84,28 +143,90 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 
 	index := indexing.NewIndex()
 
-	// Load and embed all fake descriptions
-	fmt.Println("Loading and embedding fake descriptions...")
+	// Load existing cache
+	cache, err := loadCache()
+	if err != nil {
+		cache = make(map[string]*cacheEntry)
+		if !os.IsNotExist(err) {
+			log.Printf("Warning: could not load cache (%v), will re-embed", err)
+		}
+	} else {
+		fmt.Printf("Loaded cache with %d entries\n", len(cache))
+	}
+
+	fmt.Println("Loading and embedding descriptions...")
+
+	type initResult struct {
+		person *types.Person
+		emb    []float32
+		desc   string
+		err    error
+	}
+
+	results := make([]initResult, len(data.FakeDescriptions))
+	const maxConcurrent = 10
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
+
+	for i, desc := range data.FakeDescriptions {
+		// Serve from cache if available
+		if entry, ok := cache[descHash(desc)]; ok {
+			results[i] = initResult{person: entry.Person, emb: entry.Embedding, desc: desc}
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, desc string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			person, err := preproc.ProcessDescription(desc)
+			if err != nil {
+				results[i] = initResult{err: fmt.Errorf("preprocess: %w", err)}
+				return
+			}
+			emb, err := embedder.EmbedPerson(person)
+			if err != nil {
+				results[i] = initResult{err: fmt.Errorf("embed %s: %w", person.Name, err)}
+				return
+			}
+			results[i] = initResult{person: person, emb: emb, desc: desc}
+		}(i, desc)
+	}
+	wg.Wait()
+
+	// Collect new entries to add to cache
+	var newEntries []*cacheEntry
 	loadedCount := 0
 	failedCount := 0
-	for i, desc := range data.FakeDescriptions {
-		person, err := preproc.ProcessDescription(desc)
-		if err != nil {
-			log.Printf("Failed to process description %d: %v", i, err)
+	for i, r := range results {
+		if r.err != nil {
+			log.Printf("Failed description %d: %v", i, r.err)
 			failedCount++
 			continue
 		}
-
-		emb, err := embedder.EmbedPerson(person)
-		if err != nil {
-			log.Printf("Failed to embed person %d: %v", i, err)
-			failedCount++
-			continue
-		}
-
-		index.Add(person, emb)
-		fmt.Printf("Embedded person %d: %s\n", i+1, person.Name)
+		index.Add(r.person, r.emb)
+		fmt.Printf("Loaded person %d: %s\n", i+1, r.person.Name)
 		loadedCount++
+		if _, cached := cache[descHash(r.desc)]; !cached {
+			newEntries = append(newEntries, &cacheEntry{
+				DescHash:  descHash(r.desc),
+				Person:    r.person,
+				Embedding: r.emb,
+			})
+		}
+	}
+
+	// Persist updated cache
+	if len(newEntries) > 0 {
+		allEntries := make([]*cacheEntry, 0, len(cache)+len(newEntries))
+		for _, e := range cache {
+			allEntries = append(allEntries, e)
+		}
+		allEntries = append(allEntries, newEntries...)
+		saveCache(allEntries)
+		fmt.Printf("Saved %d new entries to cache\n", len(newEntries))
 	}
 
 	if loadedCount == 0 {
@@ -158,6 +279,73 @@ func runCLI(app *App) {
 		fmt.Printf("   Skills: %v\n", res.Person.Skills)
 		fmt.Println()
 	}
+}
+
+func runEvaluation(app *App) {
+	fmt.Println("Running evaluation metrics on data.EvalCases...")
+	correctTop1 := 0
+	correctTop5 := 0
+	total := len(data.EvalCases)
+	accumSimTop1 := 0.0
+
+	for _, tc := range data.EvalCases {
+		idealPerson, err := app.preproc.ProcessDescription(tc.Query)
+		if err != nil {
+			log.Printf("Preprocess fail for query '%s': %v", tc.Query, err)
+			idealPerson = &types.Person{Description: tc.Query}
+		}
+
+		idealEmb, err := app.embedder.EmbedPerson(idealPerson)
+		if err != nil {
+			log.Printf("Embed fail for query '%s': %v", tc.Query, err)
+			idealEmb = fallbackEmbed(tc.Query)
+		}
+
+		results := app.index.Search(idealEmb, 5)
+		if len(results) > 0 {
+			accumSimTop1 += float64(results[0].Similarity)
+		}
+
+		foundTop1 := false
+		foundTop5 := false
+		for i, res := range results {
+			for _, expected := range tc.Expected {
+				if res.Person.Name == expected {
+					if i == 0 {
+						foundTop1 = true
+					}
+					foundTop5 = true
+					break
+				}
+			}
+			if foundTop5 && i >= 4 {
+				break
+			}
+		}
+
+		if foundTop1 {
+			correctTop1++
+		}
+		if foundTop5 {
+			correctTop5++
+		}
+	}
+
+	fmt.Printf("Evaluation cases: %d\n", total)
+	fmt.Printf("Top-1 accuracy: %.2f%%\n", 100*float64(correctTop1)/float64(total))
+	fmt.Printf("Top-5 accuracy: %.2f%%\n", 100*float64(correctTop5)/float64(total))
+	fmt.Printf("Avg Top-1 similarity: %.4f\n", accumSimTop1/float64(total))
+}
+
+func fallbackEmbed(text string) []float32 {
+	const dim = 256
+	vec := make([]float32, dim)
+	for i := 0; i < dim; i++ {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(fmt.Sprintf("%d:%s", i, text)))
+		vec[i] = float32(h.Sum32()) / float32(math.MaxUint32)
+	}
+	return vec
 }
 
 func runWebServer(app *App, port string) {
@@ -219,8 +407,8 @@ func (app *App) handleMatch(w http.ResponseWriter, r *http.Request) {
 	// Process the description
 	idealPerson, err := app.preproc.ProcessDescription(req.Description)
 	if err != nil {
-		app.sendJSONError(w, fmt.Sprintf("Failed to process description: %v", err), http.StatusInternalServerError)
-		return
+		log.Printf("Preprocessing failed, using fallback text-based person: %v", err)
+		idealPerson = &types.Person{Description: req.Description}
 	}
 
 	idealEmb, err := app.embedder.EmbedPerson(idealPerson)

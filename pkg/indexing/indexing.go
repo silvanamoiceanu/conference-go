@@ -52,8 +52,8 @@ func (i *Index) Search(queryEmbedding []float32, topK int) []*SearchResult {
 }
 
 type SearchResult struct {
-	Person     *types.Person
-	Similarity float32
+	Person     *types.Person `json:"person"`
+	Similarity float32       `json:"similarity"`
 }
 
 func cosineSimilarity(a, b []float32) float32 {

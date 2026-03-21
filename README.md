@@ -85,4 +85,30 @@ Embeddings are computed once at startup and cached in memory for fast subsequent
 - `pkg/types/`: Common data structures.
 - `web/templates/`: HTML templates for the web interface.
 - `web/static/`: CSS and JavaScript files for styling and interactivity.
-- `cmd/server/`: Main application supporting both CLI and web server modes. 
+- `cmd/server/`: Main application supporting both CLI and web server modes.
+
+## .env support
+
+Create a `.env` file in repository root:
+
+```bash
+GOOGLE_API_KEY=your_gemini_api_key
+```
+
+Install dependency:
+
+```bash
+go get github.com/joho/godotenv
+```
+
+Then run:
+
+```bash
+go run cmd/server/main.go -web
+```
+
+Your `.env` should be gitignored:
+
+```
+.env
+```
