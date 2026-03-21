@@ -3,45 +3,390 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conference Connection Matcher</title>
+    <title>Nexus Strategic — Conference Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🤝 Conference Connection Matcher</h1>
-            <p>Find your ideal conference connections using AI-powered matching</p>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-screen" class="login-screen">
+    <div class="login-glow"></div>
+    <div class="login-card">
+        <div class="login-brand">
+            <div class="brand-mark">N</div>
+            <div>
+                <div class="brand-name">Nexus Strategic</div>
+                <div class="brand-tagline">Conference Intelligence Platform</div>
+            </div>
+        </div>
+        <h1 class="login-title">Welcome back.</h1>
+        <p class="login-desc">Sign in to access your intelligence briefing for <strong>Global Tech Summit 2026</strong>.</p>
+        <form id="loginForm">
+            <div class="field-group">
+                <label class="field-label">Work Email</label>
+                <input class="field-input" type="email" id="loginEmail" placeholder="you@company.com" value="alex@nexusstrat.io">
+            </div>
+            <div class="field-group">
+                <label class="field-label">Password</label>
+                <input class="field-input" type="password" id="loginPassword" placeholder="••••••••" value="••••••••">
+            </div>
+            <button type="submit" class="btn-primary btn-full">Access Intelligence Briefing →</button>
+        </form>
+        <div class="login-meta">Secured by Nexus Auth · Enterprise SSO available</div>
+    </div>
+</div>
+
+<!-- ═══ APP SHELL ═══ -->
+<div id="app-shell" class="app-shell hidden">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-mark sm">N</div>
+            <div>
+                <div class="brand-name">Nexus</div>
+                <div class="sidebar-conf">Global Tech Summit</div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-item active" data-view="dashboard">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                </svg>
+                Dashboard
+            </button>
+            <button class="nav-item" data-view="scout">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                Attendee Scout
+            </button>
+            <button class="nav-item" data-view="matching">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+                </svg>
+                Strategic Match
+            </button>
+            <button class="nav-item" data-view="email" id="nav-email">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                </svg>
+                Outreach Drafter
+                <span class="nav-badge hidden" id="email-badge">•</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar" id="userInitials">AK</div>
+                <div class="user-info">
+                    <div class="user-name" id="userName">Alex Kim</div>
+                    <div class="user-role">Strategic Lead</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-area">
+        <header class="topbar">
+            <div class="topbar-title" id="topbar-title">Dashboard</div>
+            <div class="topbar-right">
+                <button class="btn-secondary" onclick="showProfileModal()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                    </svg>
+                    My Profile
+                </button>
+            </div>
         </header>
 
-        <main>
-            <section class="input-section">
-                <h2>Describe Your Ideal Connection</h2>
-                <form id="connectionForm">
-                    <textarea
-                        id="description"
-                        name="description"
-                        placeholder="e.g., Looking for a senior AI engineer interested in machine learning ethics and open-source contributions, who enjoys hiking and mentoring."
-                        required
-                    ></textarea>
-                    <button type="submit" id="submitBtn">Find Matches</button>
-                </form>
-            </section>
-
-            <section class="status-section" id="statusSection" style="display: none;">
-                <h3>Processing...</h3>
-                <div class="progress-container">
-                    <div class="progress-bar" id="progressBar"></div>
+        <!-- ── DASHBOARD ── -->
+        <div id="view-dashboard" class="view active">
+            <div class="view-header">
+                <div>
+                    <div class="overline" id="dash-date">GLOBAL TECH SUMMIT 2026 · INTELLIGENCE BRIEFING</div>
+                    <h1 class="view-title">Conference Overview</h1>
+                    <p class="view-subtitle">Your strategic intelligence briefing. Surface connections, draft outreach, close faster.</p>
                 </div>
-                <div id="statusMessage">Initializing...</div>
-            </section>
+                <button class="btn-primary" onclick="navigate('matching')">Run Strategic Match →</button>
+            </div>
 
-            <section class="results-section" id="resultsSection" style="display: none;">
-                <h2>Your Top Matches</h2>
-                <div id="resultsContainer"></div>
-            </section>
-        </main>
+            <div class="metric-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Registered Attendees</div>
+                    <div class="metric-value" id="metric-attendees">—</div>
+                    <div class="metric-delta positive">Intelligence profiles loaded</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Match Sessions</div>
+                    <div class="metric-value" id="metric-sessions">0</div>
+                    <div class="metric-delta">AI analyses run this session</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Prospects Surfaced</div>
+                    <div class="metric-value" id="metric-prospects">0</div>
+                    <div class="metric-delta">High-relevance connections found</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Outreach Drafted</div>
+                    <div class="metric-value" id="metric-emails">0</div>
+                    <div class="metric-delta">AI-personalized emails ready</div>
+                </div>
+            </div>
+
+            <div class="dash-grid">
+                <div class="dash-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Conference Schedule</div>
+                        <span class="ai-chip">2 Days · 4 Sessions</span>
+                    </div>
+                    <div class="briefings-list">
+                        <div class="briefing-item">
+                            <div class="briefing-time-block">
+                                <div class="briefing-day">DAY 1</div>
+                                <div class="briefing-hour">09:00</div>
+                            </div>
+                            <div class="briefing-body">
+                                <div class="briefing-title">Opening Keynote: The Future of Enterprise AI</div>
+                                <div class="briefing-meta">Main Stage · Dr. Sarah Chen, OpenMind Labs</div>
+                            </div>
+                        </div>
+                        <div class="briefing-item">
+                            <div class="briefing-time-block">
+                                <div class="briefing-day">DAY 1</div>
+                                <div class="briefing-hour">14:30</div>
+                            </div>
+                            <div class="briefing-body">
+                                <div class="briefing-title">Panel: Scaling Intelligence Operations at Enterprise</div>
+                                <div class="briefing-meta">Summit Hall B · 5 industry leaders</div>
+                            </div>
+                        </div>
+                        <div class="briefing-item">
+                            <div class="briefing-time-block">
+                                <div class="briefing-day">DAY 2</div>
+                                <div class="briefing-hour">10:00</div>
+                            </div>
+                            <div class="briefing-body">
+                                <div class="briefing-title">Workshop: Strategic Networking in Deep Tech</div>
+                                <div class="briefing-meta">Innovation Lab · Limited to 40 seats</div>
+                            </div>
+                        </div>
+                        <div class="briefing-item">
+                            <div class="briefing-time-block">
+                                <div class="briefing-day">DAY 2</div>
+                                <div class="briefing-hour">16:00</div>
+                            </div>
+                            <div class="briefing-body">
+                                <div class="briefing-title">Closing: Investment Trends in Foundation Models</div>
+                                <div class="briefing-meta">Main Stage · Fireside format</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="dash-panel" style="margin-bottom: 1rem;">
+                        <div class="panel-header">
+                            <div class="panel-title">Quick Actions</div>
+                        </div>
+                        <div class="quick-actions">
+                            <div class="quick-action-card" onclick="navigate('matching')">
+                                <div class="qa-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                                        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="qa-title">Strategic Match</div>
+                                    <div class="qa-desc">Surface prospects by objective</div>
+                                </div>
+                                <svg class="qa-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                            </div>
+                            <div class="quick-action-card" onclick="navigate('scout')">
+                                <div class="qa-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="qa-title">Browse Attendees</div>
+                                    <div class="qa-desc">Full intelligence directory</div>
+                                </div>
+                                <svg class="qa-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dash-panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Top Skill Clusters</div>
+                        </div>
+                        <div class="chip-cloud">
+                            <span class="ai-chip">Machine Learning</span>
+                            <span class="ai-chip">Cloud Infrastructure</span>
+                            <span class="ai-chip">Cybersecurity</span>
+                            <span class="ai-chip">Product Strategy</span>
+                            <span class="ai-chip">Data Science</span>
+                            <span class="ai-chip">DevOps & SRE</span>
+                            <span class="ai-chip">FinTech</span>
+                            <span class="ai-chip">Open Source</span>
+                            <span class="ai-chip">NLP</span>
+                            <span class="ai-chip">Distributed Systems</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── ATTENDEE SCOUT ── -->
+        <div id="view-scout" class="view hidden">
+            <div class="view-header">
+                <div>
+                    <div class="overline">AI-ENRICHED DIRECTORY</div>
+                    <h1 class="view-title">Attendee Scout</h1>
+                    <p class="view-subtitle">Browse all registered intelligence profiles. Click any attendee to draft outreach.</p>
+                </div>
+            </div>
+            <div class="scout-toolbar">
+                <div class="search-wrap">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input class="field-input search-input" type="search" id="scout-search" placeholder="Search by name, company, skill, interest…" oninput="filterAttendees()">
+                </div>
+                <div class="scout-count"><span id="scout-visible-count">—</span> profiles</div>
+            </div>
+            <div class="attendee-grid" id="attendee-grid">
+                <div class="loading-state">Loading intelligence profiles…</div>
+            </div>
+        </div>
+
+        <!-- ── STRATEGIC MATCH ── -->
+        <div id="view-matching" class="view hidden">
+            <div class="view-header">
+                <div>
+                    <div class="overline">AI-POWERED · SEMANTIC MATCHING</div>
+                    <h1 class="view-title">Strategic Match</h1>
+                    <p class="view-subtitle">Define your strategic objectives to surface your highest-value connections.</p>
+                </div>
+            </div>
+
+            <div class="matching-layout">
+                <div class="matching-inputs">
+                    <!-- Step 1 -->
+                    <div class="input-panel" id="profile-panel">
+                        <div class="input-panel-hd">
+                            <div>
+                                <div class="overline" style="color: var(--primary);">STEP 1</div>
+                                <div class="input-panel-title">Your Strategic Profile</div>
+                            </div>
+                            <div class="status-badge hidden" id="profile-status-badge">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                Set
+                            </div>
+                        </div>
+                        <div id="profile-configured" class="hidden">
+                            <div class="profile-preview-card" id="profile-preview"></div>
+                            <button class="btn-ghost" onclick="resetProfile()" style="margin-top: 0.75rem;">Edit profile</button>
+                        </div>
+                        <div id="profile-form">
+                            <textarea class="field-textarea" id="profileDescription" placeholder="Describe your background, role, skills, and interests. e.g., Senior PM at a Series B SaaS company, background in ML engineering, passionate about developer tooling and open-source…"></textarea>
+                            <button class="btn-primary" id="profileBtn" onclick="submitProfile()">Confirm Profile →</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="input-panel" id="match-panel">
+                        <div class="input-panel-hd">
+                            <div>
+                                <div class="overline" style="color: var(--primary);">STEP 2</div>
+                                <div class="input-panel-title">Define Your Target</div>
+                            </div>
+                        </div>
+                        <textarea class="field-textarea" id="matchDescription" placeholder="Who are you looking to connect with? e.g., Senior AI/ML engineers working on infrastructure tooling, interested in distributed systems or open-source developer tools…"></textarea>
+                        <button class="btn-primary" id="matchBtn" onclick="submitMatch()">Surface Prospects →</button>
+                    </div>
+                </div>
+
+                <div class="matching-results-panel">
+                    <div class="results-placeholder" id="results-placeholder">
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.25">
+                            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+                        </svg>
+                        <div style="color: var(--on-surface-variant);">Complete both steps to surface your highest-value prospects</div>
+                    </div>
+                    <div id="match-loading" class="hidden loading-panel">
+                        <div class="loading-spinner"></div>
+                        <div id="match-loading-msg" style="color: var(--on-surface-variant); font-size: 0.875rem;">Processing semantic intelligence…</div>
+                    </div>
+                    <div id="match-results-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── EMAIL DRAFTER ── -->
+        <div id="view-email" class="view hidden">
+            <div class="view-header" style="margin-bottom: 1.25rem;">
+                <div>
+                    <div class="overline">AI-GENERATED OUTREACH</div>
+                    <h1 class="view-title">Outreach Drafter</h1>
+                </div>
+                <button class="btn-ghost" onclick="navigate('matching')">← Back to prospects</button>
+            </div>
+
+            <div class="email-layout">
+                <div class="intel-panel">
+                    <div class="intel-panel-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        Target Intelligence
+                    </div>
+                    <div id="intel-content">
+                        <div class="loading-state">Select a prospect from Strategic Match.</div>
+                    </div>
+                </div>
+
+                <div class="email-draft-panel">
+                    <div class="email-draft-header">
+                        <div class="intel-panel-title">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                            AI Draft
+                        </div>
+                        <div id="email-actions" class="hidden" style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button class="btn-ghost" onclick="regenerateEmail()">↺ Regenerate</button>
+                            <button class="btn-primary" onclick="copyEmail(event)">Copy Draft</button>
+                        </div>
+                    </div>
+                    <div id="email-generating" class="hidden loading-panel">
+                        <div class="loading-spinner"></div>
+                        <div style="color: var(--on-surface-variant); font-size: 0.875rem;">Crafting personalized outreach…</div>
+                    </div>
+                    <textarea class="email-textarea" id="emailText" placeholder="Select a prospect and click 'Draft Outreach' to generate a personalized, intelligence-backed email."></textarea>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /main-area -->
+</div><!-- /app-shell -->
+
+<!-- Profile Modal -->
+<div id="profile-modal" class="modal-overlay hidden" onclick="closeModalOnBackdrop(event)">
+    <div class="modal-card">
+        <div class="modal-hd">
+            <div class="modal-title">Your Strategic Profile</div>
+            <button class="modal-close" onclick="hideProfileModal()">✕</button>
+        </div>
+        <div id="modal-profile-content" class="modal-body"></div>
     </div>
+</div>
 
-    <script src="/static/app.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>

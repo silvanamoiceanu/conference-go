@@ -16,6 +16,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/giorgio/conference-go/pkg/data"
+	"github.com/giorgio/conference-go/pkg/email"
 	"github.com/giorgio/conference-go/pkg/embedding"
 	"github.com/giorgio/conference-go/pkg/indexing"
 	"github.com/giorgio/conference-go/pkg/preprocessing"
@@ -26,6 +27,7 @@ type App struct {
 	preproc  *preprocessing.Preprocessor
 	embedder *embedding.Embedder
 	index    *indexing.Index
+	writer   *email.Writer
 }
 
 type MatchRequest struct {
@@ -35,6 +37,21 @@ type MatchRequest struct {
 type MatchResponse struct {
 	Matches []*indexing.SearchResult `json:"matches,omitempty"`
 	Error   string                   `json:"error,omitempty"`
+}
+
+type ProfileResponse struct {
+	Person *types.Person `json:"person,omitempty"`
+	Error  string        `json:"error,omitempty"`
+}
+
+type EmailRequest struct {
+	From *types.Person `json:"from"`
+	To   *types.Person `json:"to"`
+}
+
+type EmailResponse struct {
+	Email string `json:"email,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 func main() {
@@ -141,6 +158,11 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		return nil, fmt.Errorf("failed to create embedder: %w", err)
 	}
 
+	writer, err := email.NewWriter(ctx, apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create email writer: %w", err)
+	}
+
 	index := indexing.NewIndex()
 
 	// Load existing cache
@@ -237,6 +259,7 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		preproc:  preproc,
 		embedder: embedder,
 		index:    index,
+		writer:   writer,
 	}
 
 	if app.index.Size() == 0 {
@@ -353,8 +376,11 @@ func runWebServer(app *App, port string) {
 	fs := http.FileServer(http.Dir("./web/static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	// API endpoint for matching
+	// API endpoints
+	http.HandleFunc("/api/attendees", app.handleAttendees)
+	http.HandleFunc("/api/profile", app.handleProfile)
 	http.HandleFunc("/api/match", app.handleMatch)
+	http.HandleFunc("/api/email", app.handleEmail)
 
 	// Main page
 	http.HandleFunc("/", app.handleIndex)
@@ -423,6 +449,85 @@ func (app *App) handleMatch(w http.ResponseWriter, r *http.Request) {
 	response := MatchResponse{Matches: results}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+func (app *App) handleAttendees(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	persons := []*types.Person{}
+	if app.index != nil {
+		persons = app.index.Persons()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"attendees": persons, "total": len(persons)})
+}
+
+func (app *App) handleProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if app.preproc == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: "Server not initialized"})
+		return
+	}
+
+	var req MatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Description == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: "Description is required"})
+		return
+	}
+
+	person, err := app.preproc.ProcessDescription(req.Description)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ProfileResponse{Error: fmt.Sprintf("Failed to process description: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ProfileResponse{Person: person})
+}
+
+func (app *App) handleEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if app.writer == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(EmailResponse{Error: "Server not initialized"})
+		return
+	}
+
+	var req EmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.From == nil || req.To == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(EmailResponse{Error: "Both 'from' and 'to' person profiles are required"})
+		return
+	}
+
+	text, err := app.writer.WriteEmail(req.From, req.To)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(EmailResponse{Error: fmt.Sprintf("Failed to write email: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(EmailResponse{Email: text})
 }
 
 func (app *App) sendJSONError(w http.ResponseWriter, message string, statusCode int) {

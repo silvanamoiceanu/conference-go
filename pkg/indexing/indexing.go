@@ -28,6 +28,10 @@ func (i *Index) Size() int {
 	return len(i.persons)
 }
 
+func (i *Index) Persons() []*types.Person {
+	return i.persons
+}
+
 func (i *Index) Search(queryEmbedding []float32, topK int) []*SearchResult {
 	results := make([]*SearchResult, 0, len(i.persons))
 
