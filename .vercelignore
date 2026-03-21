@@ -1,0 +1,5 @@
+cmd/
+Dockerfile
+docker-compose.yml
+setup.sh
+conference.db
