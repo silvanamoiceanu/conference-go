@@ -19,7 +19,7 @@ An AI-enabled smart conference connection matching and email generation system u
 ./setup.sh
 ```
 
-The script checks for Docker, prompts for your API key (saves to `.env`), builds the image, and starts the server at http://localhost:8080. The embeddings cache is mounted as a bind volume so it persists across container restarts.
+The script checks for Docker, prompts for your API key (saves to `.env`), builds the image, and starts the server at http://localhost:8080. The SQLite database is mounted as a bind volume so profiles persist across container restarts.
 
 Or manually:
 
@@ -47,8 +47,9 @@ go run cmd/server/main.go -web -port 3000
 Then open http://localhost:8080 in your browser.
 
 The web interface provides:
-- Browse all 308 conference attendees
+- Browse all conference attendees
 - Search for your ideal connection by natural language description
+- Add new attendees via `POST /api/attendees/add`
 - AI-generated introduction emails between matched attendees
 - Chat with an AI persona of any attendee
 - Text-to-speech playback of attendee responses
@@ -64,20 +65,20 @@ go run cmd/server/main.go "Your ideal connection description here"
 If no description is provided, it uses a default example.
 
 The system will:
-1. Load and embed all 308 attendee profiles (disk-cached after first run)
+1. Load and embed all 308 attendee profiles (database-cached after first run)
 2. Process your ideal connection description
 3. Find and display the top 5 most similar matches with details
 
-## Startup & Caching
+## Startup & Database
 
-Profile embeddings are persisted to `embeddings_cache.json` after the first run so subsequent starts skip the Gemini API calls.
+Profiles (structured data + embeddings) are stored in `conference.db` (SQLite) after the first run. On subsequent starts, only descriptions not already in the database are re-processed.
 
 | Scenario | Time (`go run`) |
 |---|---|
-| Cold start (no cache) | ~86s — preprocesses and embeds all 308 profiles with 10 concurrent Gemini API calls |
-| Warm start (cache exists) | ~24s — deserializes cache from disk (most of this is Go compilation) |
+| Cold start (empty DB) | ~86s — preprocesses and embeds all 308 profiles with 10 concurrent Gemini API calls |
+| Warm start (DB populated) | ~24s — loads profiles from SQLite (most of this is Go compilation) |
 
-The cache file is ~12 MB for 308 profiles. Once it exists, no API calls are made at startup.
+Once the database is populated, no API calls are made at startup. New attendees added via `POST /api/attendees/add` are persisted immediately and survive restarts.
 
 ## Setup
 
@@ -108,6 +109,7 @@ The cache file is ~12 MB for 308 profiles. Once it exists, no API calls are made
 - `pkg/preprocessing/`: Natural language → structured JSON conversion using Gemini.
 - `pkg/embedding/`: Generates embeddings for person profiles using Gemini embedding API.
 - `pkg/indexing/`: Brute-force vector indexing and cosine similarity search.
+- `pkg/database/`: SQLite-backed profile store (structured data + embeddings).
 - `pkg/types/`: Common data structures.
 - `pkg/email/`: AI-generated introduction email drafting.
 - `pkg/conversation/`: Attendee persona chat and text-to-speech via Gemini.
