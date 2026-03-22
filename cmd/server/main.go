@@ -12,8 +12,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"sync"
-
 	"github.com/joho/godotenv"
 	"github.com/giorgio/conference-go/pkg/conversation"
 	"github.com/giorgio/conference-go/pkg/data"
@@ -176,75 +174,8 @@ func initializeApp(ctx context.Context, apiKey string) (*App, error) {
 		}
 	}
 
-	// Find descriptions not yet in DB and process them
-	fmt.Println("Checking for new descriptions to embed...")
-
-	type initResult struct {
-		person *types.Person
-		emb    []float32
-		desc   string
-		err    error
-	}
-
-	var pending []string
-	var pendingIdx []int
-	for i, desc := range data.FakeDescriptions {
-		if !db.Has(ctx, descHash(desc)) {
-			pending = append(pending, desc)
-			pendingIdx = append(pendingIdx, i)
-		}
-	}
-
-	if len(pending) > 0 {
-		fmt.Printf("Processing %d new descriptions...\n", len(pending))
-		results := make([]initResult, len(pending))
-		const maxConcurrent = 10
-		sem := make(chan struct{}, maxConcurrent)
-		var wg sync.WaitGroup
-
-		for i, desc := range pending {
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(i int, desc string) {
-				defer wg.Done()
-				defer func() { <-sem }()
-
-				person, err := preproc.ProcessDescription(desc)
-				if err != nil {
-					results[i] = initResult{err: fmt.Errorf("preprocess: %w", err)}
-					return
-				}
-				emb, err := embedder.EmbedPerson(person)
-				if err != nil {
-					results[i] = initResult{err: fmt.Errorf("embed %s: %w", person.Name, err)}
-					return
-				}
-				results[i] = initResult{person: person, emb: emb, desc: desc}
-			}(i, desc)
-		}
-		wg.Wait()
-
-		newCount := 0
-		for i, r := range results {
-			if r.err != nil {
-				log.Printf("Failed description %d: %v", pendingIdx[i], r.err)
-				continue
-			}
-			index.Add(r.person, r.emb)
-			if err := db.Save(ctx, &database.Entry{
-				DescHash:  descHash(r.desc),
-				Person:    r.person,
-				Embedding: r.emb,
-			}); err != nil {
-				log.Printf("Warning: failed to save profile %s to DB: %v", r.person.Name, err)
-			}
-			newCount++
-		}
-		fmt.Printf("Saved %d new profiles to database\n", newCount)
-	}
-
 	if index.Size() == 0 {
-		return nil, fmt.Errorf("failed to load any person profiles - check your API key")
+		return nil, fmt.Errorf("no profiles in database — run cmd/migrate first")
 	}
 
 	return &App{
